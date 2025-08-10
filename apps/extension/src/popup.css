@@ -1,6 +1,8 @@
-.popup { width: 320px; padding: 12px; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
+.popup { width: 340px; padding: 12px; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
 .popup h1 { font-size: 16px; margin: 0 0 8px; }
+.popup .card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px; margin: 8px 0; }
+.popup input, .popup select { width: 100%; padding: 6px; margin: 6px 0; box-sizing: border-box; }
 .popup label { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; font-size: 12px; }
-.popup .row { flex-direction: row; align-items: center; gap: 8px; }
 .popup button { margin-top: 8px; padding: 6px 10px; font-size: 12px; cursor: pointer; }
+.popup .error { margin-top: 8px; padding: 6px; background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; border-radius: 6px; font-size: 12px; }
 .popup footer { margin-top: 12px; font-size: 10px; color: #666; } 
