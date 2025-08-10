@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Genz - Compose with AI",
+  "description": "Inject a Compose with AI button on inputs and generate context-aware replies.",
+  "version": "0.1.0",
+  "action": {
+    "default_title": "Genz",
+    "default_popup": "popup.html"
+  },
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
