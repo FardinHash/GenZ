@@ -10,12 +10,16 @@ class Settings(BaseSettings):
     environment: str = "development"
     version: str = "0.1.0"
     api_v1_prefix: str = "/api/v1"
-    cors_origins: str = "*"
+    cors_origins: str = "*"  # comma-separated or '*'
 
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/genz"
     jwt_secret_key: str = "change-me"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
+
+    # Encryption for provider API keys (PBKDF2 -> Fernet)
+    encryption_secret: str = "change-this-dev-secret"
+    encryption_salt: str = "genz-salt"
 
     def get_cors_origins(self) -> List[str]:
         raw = (self.cors_origins or "").strip()
