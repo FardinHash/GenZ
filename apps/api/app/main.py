@@ -9,7 +9,13 @@ from app.db.session import engine
 
 settings = get_settings()
 
-app = FastAPI(title=settings.app_name, version=settings.version)
+app = FastAPI(
+    title=settings.app_name,
+    version=settings.version,
+    docs_url=f"{settings.api_v1_prefix}/docs",
+    openapi_url=f"{settings.api_v1_prefix}/openapi.json",
+    redoc_url=None,
+)
 
 app.add_middleware(
     CORSMiddleware,
