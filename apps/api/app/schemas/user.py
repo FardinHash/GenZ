@@ -1,4 +1,5 @@
 from datetime import datetime
+from uuid import UUID
 from pydantic import BaseModel, EmailStr
 
 
@@ -15,7 +16,7 @@ class UserLogin(UserBase):
 
 
 class UserPublic(UserBase):
-    id: str
+    id: UUID
     plan_id: str | None = None
     is_active: bool
     created_at: datetime
