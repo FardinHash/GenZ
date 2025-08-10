@@ -10,12 +10,18 @@ class Settings(BaseSettings):
     environment: str = "development"
     version: str = "0.1.0"
     api_v1_prefix: str = "/api/v1"
-    cors_origins: List[str] = ["*"]
+    cors_origins: str = "*"
 
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/genz"
     jwt_secret_key: str = "change-me"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
+
+    def get_cors_origins(self) -> List[str]:
+        raw = (self.cors_origins or "").strip()
+        if raw == "*" or raw == "":
+            return ["*"]
+        return [part.strip() for part in raw.split(",") if part.strip()]
 
 
 @lru_cache()
