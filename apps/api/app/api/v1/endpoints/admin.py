@@ -30,8 +30,14 @@ async def usage(db: Session = Depends(get_db), _=Depends(verify_admin)):
         .limit(20)
         .all()
     )
+    tokens_in_sum = db.query(func.coalesce(func.sum(RequestRecord.tokens_in), 0)).scalar() or 0
+    tokens_out_sum = db.query(func.coalesce(func.sum(RequestRecord.tokens_out), 0)).scalar() or 0
+    cost_sum = db.query(func.coalesce(func.sum(RequestRecord.cost_usd), 0.0)).scalar() or 0.0
     return {
         "total": total,
+        "tokens_in": int(tokens_in_sum),
+        "tokens_out": int(tokens_out_sum),
+        "cost_usd": float(cost_sum),
         "by_provider": [{"provider": p, "count": c} for p, c in by_provider],
         "by_model": [{"model": m, "count": c} for m, c in by_model],
     }

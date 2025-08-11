@@ -5,6 +5,7 @@ from fastapi.responses import StreamingResponse
 from app.api.deps import get_current_user, get_db
 from app.core.crypto import decrypt_value
 from app.core.rate_limit import check_rate_limit
+from app.core.billing import estimate_tokens, compute_cost_usd
 from app.models.key import ApiKey
 from app.models.user import User
 from app.models.request import RequestRecord
@@ -47,6 +48,15 @@ async def generate(req: GenerationRequest, db: Session = Depends(get_db), curren
 
     try:
         result = adapter.generate(current_user, req, api_key)
+        # token and cost estimation
+        prompt_text = (req.prompt or "")
+        if req.context and req.context.selected_text:
+            prompt_text += "\n\nSelected:\n" + req.context.selected_text
+        tin = estimate_tokens(req.model_provider, prompt_text, req.model)
+        tout = estimate_tokens(req.model_provider, result.output_text, req.model)
+        rec.tokens_in = tin
+        rec.tokens_out = tout
+        rec.cost_usd = compute_cost_usd(req.model_provider, req.model, tin, tout)
         rec.status = "success"
         db.add(rec)
         db.commit()
@@ -76,11 +86,23 @@ async def generate_stream(req: GenerationRequest, db: Session = Depends(get_db),
     db.add(rec)
     db.commit()
 
+    # pre-estimate prompt tokens as above
+    prompt_text = (req.prompt or "")
+    if req.context and req.context.selected_text:
+        prompt_text += "\n\nSelected:\n" + req.context.selected_text
+    rec.tokens_in = estimate_tokens(req.model_provider, prompt_text, req.model)
+    db.add(rec)
+    db.commit()
+
     def event_gen():
         try:
+            out_total = 0
             for delta in adapter.generate_stream(current_user, req, api_key):
+                out_total += estimate_tokens(req.model_provider, delta, req.model)
                 yield f"data: {delta}\n\n"
             yield "data: [DONE]\n\n"
+            rec.tokens_out = out_total
+            rec.cost_usd = compute_cost_usd(req.model_provider, req.model, rec.tokens_in or 0, rec.tokens_out or 0)
             rec.status = "success"
             db.add(rec)
             db.commit()
