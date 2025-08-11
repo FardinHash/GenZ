@@ -121,6 +121,14 @@ function openPopover(target: HTMLElement) {
   currentPopover = pop;
   document.body.appendChild(pop.wrap);
   positionPopover(pop, target);
+  try {
+    chrome.storage.local.get("genz:settings", (res) => {
+      const cfg = (res && (res as any)["genz:settings"]) || {};
+      if (typeof cfg.includeSelectionDefault === "boolean") {
+        (pop as any).includeCb.checked = cfg.includeSelectionDefault;
+      }
+    });
+  } catch {}
 
   let streaming = false;
   let buffer = "";
