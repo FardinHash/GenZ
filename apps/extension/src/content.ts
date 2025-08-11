@@ -36,6 +36,155 @@ function isEligible(el: Element): boolean {
   return true;
 }
 
+function createPopover() {
+  const wrap = document.createElement("div");
+  wrap.style.position = "absolute";
+  wrap.style.zIndex = "2147483647";
+  wrap.style.minWidth = "280px";
+  wrap.style.maxWidth = "420px";
+  wrap.style.background = "#fff";
+  wrap.style.border = "1px solid #e5e7eb";
+  wrap.style.borderRadius = "8px";
+  wrap.style.boxShadow = "0 8px 24px rgba(0,0,0,0.12)";
+  wrap.style.padding = "8px";
+  wrap.style.fontFamily =
+    "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial";
+
+  const title = document.createElement("div");
+  title.textContent = "Compose with AI";
+  title.style.fontSize = "12px";
+  title.style.color = "#111";
+  title.style.marginBottom = "6px";
+
+  const actions = document.createElement("div");
+  actions.style.display = "flex";
+  actions.style.gap = "6px";
+  actions.style.marginBottom = "6px";
+
+  const btnStart = document.createElement("button");
+  btnStart.textContent = "Generate";
+  const btnCancel = document.createElement("button");
+  btnCancel.textContent = "Cancel";
+  const btnInsert = document.createElement("button");
+  btnInsert.textContent = "Insert";
+
+  [btnStart, btnCancel, btnInsert].forEach((b) => {
+    b.style.fontSize = "12px";
+    b.style.padding = "4px 8px";
+    b.style.border = "1px solid #d1d5db";
+    b.style.borderRadius = "6px";
+    b.style.background = "#fff";
+    b.style.cursor = "pointer";
+  });
+
+  const output = document.createElement("div");
+  output.style.fontSize = "12px";
+  output.style.whiteSpace = "pre-wrap";
+  output.style.border = "1px dashed #e5e7eb";
+  output.style.borderRadius = "6px";
+  output.style.padding = "6px";
+  output.style.minHeight = "40px";
+
+  actions.append(btnStart, btnCancel, btnInsert);
+  wrap.append(title, actions, output);
+
+  return { wrap, btnStart, btnCancel, btnInsert, output };
+}
+
+let currentPopover: ReturnType<typeof createPopover> | null = null;
+
+function positionPopover(
+  pop: ReturnType<typeof createPopover>,
+  anchor: HTMLElement
+) {
+  const rect = anchor.getBoundingClientRect();
+  pop.wrap.style.top = `${window.scrollY + rect.bottom + 6}px`;
+  pop.wrap.style.left = `${window.scrollX + rect.left}px`;
+}
+
+function openPopover(target: HTMLElement) {
+  if (currentPopover) closePopover();
+  const pop = createPopover();
+  currentPopover = pop;
+  document.body.appendChild(pop.wrap);
+  positionPopover(pop, target);
+
+  let streaming = false;
+  let buffer = "";
+
+  const start = async () => {
+    if (streaming) return;
+    streaming = true;
+    buffer = "";
+    pop.output.textContent = "";
+    const selection =
+      (window.getSelection()?.toString() ?? "").trim() ||
+      lastSelectionText ||
+      "";
+    chrome.runtime.sendMessage({
+      type: "GENZ_STREAM_START",
+      selectedText: selection,
+    });
+  };
+  const cancel = async () => {
+    if (!streaming) return;
+    chrome.runtime.sendMessage({ type: "GENZ_STREAM_CANCEL" });
+  };
+  const insert = async () => {
+    if (!buffer) return;
+    insertTextAtTarget(target, buffer);
+  };
+
+  pop.btnStart.addEventListener("click", start);
+  pop.btnCancel.addEventListener("click", cancel);
+  pop.btnInsert.addEventListener("click", insert);
+
+  const onMsg = (msg: any) => {
+    if (msg?.type === "GENZ_STREAM_BEGIN") {
+      pop.output.textContent = "";
+    } else if (
+      msg?.type === "GENZ_STREAM_DELTA" &&
+      typeof msg.delta === "string"
+    ) {
+      buffer += msg.delta;
+      pop.output.textContent = buffer;
+    } else if (msg?.type === "GENZ_STREAM_DONE") {
+      streaming = false;
+    } else if (msg?.type === "GENZ_STREAM_ABORTED") {
+      streaming = false;
+    } else if (msg?.type === "GENZ_STREAM_ERROR") {
+      streaming = false;
+      pop.output.textContent = `Error: ${msg.error}`;
+    }
+  };
+
+  const listener = (msg: any, _sender: any) => onMsg(msg);
+  chrome.runtime.onMessage.addListener(listener);
+
+  const onScrollOrResize = () => positionPopover(pop, target);
+  window.addEventListener("scroll", onScrollOrResize, { passive: true });
+  window.addEventListener("resize", onScrollOrResize, { passive: true });
+
+  const onBlurDetach = () => {
+    setTimeout(() => {
+      if (document.activeElement !== target) closePopover();
+    }, 100);
+  };
+  target.addEventListener("blur", onBlurDetach);
+
+  function closePopover() {
+    try {
+      chrome.runtime.onMessage.removeListener(listener);
+      window.removeEventListener("scroll", onScrollOrResize);
+      window.removeEventListener("resize", onScrollOrResize);
+      target.removeEventListener("blur", onBlurDetach);
+      pop.wrap.remove();
+      if (streaming) chrome.runtime.sendMessage({ type: "GENZ_STREAM_CANCEL" });
+    } catch {}
+    currentPopover = null;
+  }
+}
+
 function createButton(target: HTMLElement): HTMLButtonElement {
   const btn = document.createElement("button");
   btn.textContent = "Compose with AI";
@@ -50,17 +199,9 @@ function createButton(target: HTMLElement): HTMLButtonElement {
 
   btn.addEventListener("click", async () => {
     try {
-      const selection = (window.getSelection()?.toString() ?? "").trim();
-      const selectedText = selection || lastSelectionText || "";
-      const providerInfo = await chrome.runtime.sendMessage({
-        type: "GENZ_REQUEST_GENERATE",
-        selectedText,
-      });
-      if (providerInfo && typeof providerInfo.text === "string") {
-        insertTextAtTarget(target, providerInfo.text);
-      }
+      openPopover(target);
     } catch (e) {
-      console.error("[genz] generate failed", e);
+      console.error("[genz] popover failed", e);
     }
   });
 
