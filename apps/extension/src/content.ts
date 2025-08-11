@@ -132,6 +132,7 @@ function openPopover(target: HTMLElement) {
 
   let streaming = false;
   let buffer = "";
+  let insertCommitted = false;
 
   const start = async () => {
     if (streaming) return;
@@ -145,7 +146,7 @@ function openPopover(target: HTMLElement) {
     chrome.runtime.sendMessage({
       type: "GENZ_STREAM_START",
       selectedText: selection,
-      includeSelection: !!pop.includeCb.checked,
+      includeSelection: !!(pop as any).includeCb.checked,
     });
   };
   const cancel = async () => {
@@ -155,6 +156,7 @@ function openPopover(target: HTMLElement) {
   const insert = async () => {
     if (!buffer) return;
     insertTextAtTarget(target, buffer);
+    insertCommitted = true;
     closePopover();
   };
 
@@ -181,6 +183,9 @@ function openPopover(target: HTMLElement) {
     } else if (msg?.type === "GENZ_STREAM_ERROR") {
       streaming = false;
       pop.output.textContent = `Error: ${msg.error}`;
+    } else if (msg?.type === "GENZ_STREAM_FINISH") {
+      streaming = false;
+      // nothing else here; backend logs success already at end
     }
   };
 
@@ -205,7 +210,8 @@ function openPopover(target: HTMLElement) {
       window.removeEventListener("resize", onScrollOrResize);
       target.removeEventListener("blur", onBlurDetach);
       pop.wrap.remove();
-      if (streaming) chrome.runtime.sendMessage({ type: "GENZ_STREAM_CANCEL" });
+      if (streaming && !insertCommitted)
+        chrome.runtime.sendMessage({ type: "GENZ_STREAM_CANCEL" });
     } catch {}
     currentPopover = null;
   }

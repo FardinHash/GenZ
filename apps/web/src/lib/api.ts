@@ -12,14 +12,26 @@ export function setToken(token: string | null) {
   else localStorage.removeItem("genz_token");
 }
 
-async function request(path: string, init: RequestInit = {}) {
+async function doFetch(path: string, init: RequestInit = {}) {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(init.headers as Record<string, string>),
   };
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  return fetch(`${API_BASE}${path}`, { ...init, headers });
+}
+
+async function request(path: string, init: RequestInit = {}, retry = true): Promise<any> {
+  let res = await doFetch(path, init);
+  if (res.status === 401 && retry) {
+    const r = await doFetch('/api/v1/auth/refresh', { method: 'POST' });
+    if (r.ok) {
+      const data = await r.json();
+      setToken(data.access_token);
+      res = await doFetch(path, init);
+    }
+  }
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`HTTP ${res.status}: ${text}`);
@@ -34,12 +46,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
-  login: (email: string, password: string) =>
-    request("/api/v1/auth/login", {
+  login: async (email: string, password: string) => {
+    const res = await request("/api/v1/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
-    }),
+    });
+    setToken(res.access_token);
+    return res;
+  },
   me: () => request("/api/v1/user/me"),
+  myUsage: () => request('/api/v1/user/usage'),
   listKeys: () => request("/api/v1/keys"),
   createKey: (
     provider: "openai" | "anthropic" | "gemini",
