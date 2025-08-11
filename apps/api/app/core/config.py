@@ -17,9 +17,14 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
 
-    # Encryption for provider API keys (PBKDF2 -> Fernet)
     encryption_secret: str = "change-this-dev-secret"
     encryption_salt: str = "genz-salt"
+
+    redis_url: str = "redis://localhost:6379/0"
+    rate_limit_requests_per_minute: int = 30
+
+    # Admin
+    admin_api_secret: str = "change-admin-secret"
 
     def get_cors_origins(self) -> List[str]:
         raw = (self.cors_origins or "").strip()

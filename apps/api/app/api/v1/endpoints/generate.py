@@ -4,6 +4,7 @@ from fastapi.responses import StreamingResponse
 
 from app.api.deps import get_current_user, get_db
 from app.core.crypto import decrypt_value
+from app.core.rate_limit import check_rate_limit
 from app.models.key import ApiKey
 from app.models.user import User
 from app.models.request import RequestRecord
@@ -27,6 +28,10 @@ def _resolve_user_key(db: Session, user_id, provider: str) -> str:
 
 @router.post("/generate", response_model=GenerationResponse)
 async def generate(req: GenerationRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    allowed, remaining = check_rate_limit(str(current_user.id))
+    if not allowed:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Rate limit exceeded")
+
     if not req.use_user_key:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Server key flow not configured")
 
@@ -55,6 +60,10 @@ async def generate(req: GenerationRequest, db: Session = Depends(get_db), curren
 
 @router.post("/generate/stream")
 async def generate_stream(req: GenerationRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    allowed, remaining = check_rate_limit(str(current_user.id))
+    if not allowed:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Rate limit exceeded")
+
     if not req.use_user_key:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Server key flow not configured")
 
