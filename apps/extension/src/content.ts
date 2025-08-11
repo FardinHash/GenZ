@@ -5,6 +5,8 @@ let lastSelectionText: string = "";
 const SELECTOR =
   'textarea, input[type="text"], input[type="search"], input[type="email"], input[type="url"], input[type="tel"], [contenteditable="true"]';
 
+const lastRangeByEditable = new WeakMap<HTMLElement, Range>();
+
 function isVisible(el: HTMLElement): boolean {
   const rect = el.getBoundingClientRect();
   if (rect.width === 0 || rect.height === 0) return false;
@@ -137,7 +139,10 @@ function openPopover(target: HTMLElement) {
 
   pop.btnStart.addEventListener("click", start);
   pop.btnCancel.addEventListener("click", cancel);
-  pop.btnInsert.addEventListener("click", insert);
+  pop.btnInsert.addEventListener("click", (e) => {
+    e.preventDefault();
+    insert();
+  });
 
   const onMsg = (msg: any) => {
     if (msg?.type === "GENZ_STREAM_BEGIN") {
@@ -259,13 +264,77 @@ const observer = new MutationObserver((mutations) => {
   if (pendingNodes.size > 0) scheduleProcess();
 });
 
+function findEditableAncestor(node: Node | null): HTMLElement | null {
+  let cur: Node | null = node;
+  while (cur) {
+    if (cur instanceof HTMLElement && cur.isContentEditable) return cur;
+    cur = cur.parentNode;
+  }
+  return null;
+}
+
 function trackSelection() {
   const handler = () => {
-    const s = window.getSelection()?.toString() ?? "";
-    if (s) lastSelectionText = s;
+    const sel = window.getSelection();
+    const sText = sel?.toString() ?? "";
+    if (sText) lastSelectionText = sText;
+    if (sel && sel.rangeCount > 0) {
+      const range = sel.getRangeAt(0).cloneRange();
+      const editable = findEditableAncestor(range.startContainer);
+      if (editable) lastRangeByEditable.set(editable, range);
+    }
   };
   document.addEventListener("selectionchange", handler, { passive: true });
 }
+
+function insertTextAtTarget(target: HTMLElement, text: string) {
+  if (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement
+  ) {
+    target.focus();
+    const start = target.selectionStart ?? target.value.length;
+    const end = target.selectionEnd ?? start;
+    const before = target.value.slice(0, start);
+    const after = target.value.slice(end);
+    target.value = before + text + after;
+    const caret = start + text.length;
+    try {
+      target.setSelectionRange(caret, caret);
+    } catch {}
+    target.dispatchEvent(new Event("input", { bubbles: true }));
+    return;
+  }
+  if ((target as HTMLElement).isContentEditable) {
+    target.focus();
+    let range = lastRangeByEditable.get(target as HTMLElement);
+    const sel = window.getSelection();
+    if (!range) {
+      range = document.createRange();
+      range.selectNodeContents(target);
+      range.collapse(false);
+    }
+    if (sel) {
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+    range.insertNode(document.createTextNode(text));
+    range.setStartAfter(range.endContainer);
+    range.collapse(false);
+    if (sel) {
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+    target.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+}
+
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg?.type === "GENZ_INSERT_TEXT" && typeof msg.text === "string") {
+    const target = (document.activeElement as HTMLElement) || lastFocused;
+    if (target) insertTextAtTarget(target, msg.text);
+  }
+});
 
 function init() {
   try {
@@ -282,33 +351,5 @@ function init() {
     console.error("[genz] content init error", e);
   }
 }
-
-function insertTextAtTarget(target: HTMLElement, text: string) {
-  if (
-    target instanceof HTMLInputElement ||
-    target instanceof HTMLTextAreaElement
-  ) {
-    const sep = target.value ? " " : "";
-    target.value += sep + text;
-    target.dispatchEvent(new Event("input", { bubbles: true }));
-    return;
-  }
-  if ((target as HTMLElement).isContentEditable) {
-    const sel = window.getSelection();
-    if (sel && sel.rangeCount > 0) {
-      sel.deleteFromDocument();
-      sel.getRangeAt(0).insertNode(document.createTextNode(text));
-    } else {
-      (target as HTMLElement).append(text);
-    }
-  }
-}
-
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg?.type === "GENZ_INSERT_TEXT" && typeof msg.text === "string") {
-    const target = (document.activeElement as HTMLElement) || lastFocused;
-    if (target) insertTextAtTarget(target, msg.text);
-  }
-});
 
 init();
