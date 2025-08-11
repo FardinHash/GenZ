@@ -33,7 +33,8 @@ async def generate(req: GenerationRequest, db: Session = Depends(get_db), curren
     api_key = _resolve_user_key(db, current_user.id, req.model_provider)
     adapter = get_adapter(req.model_provider)
 
-    domain, path = RequestRecord.parse_domain_path(req.context.url if req.context else None)
+    url_str = str(req.context.url) if (req.context and req.context.url) else None
+    domain, path = RequestRecord.parse_domain_path(url_str)
     rec = RequestRecord(user_id=current_user.id, domain=domain, path=path, model=req.model, model_provider=req.model_provider, status="started")
     db.add(rec)
     db.commit()
@@ -60,7 +61,8 @@ async def generate_stream(req: GenerationRequest, db: Session = Depends(get_db),
     api_key = _resolve_user_key(db, current_user.id, req.model_provider)
     adapter = get_adapter(req.model_provider)
 
-    domain, path = RequestRecord.parse_domain_path(req.context.url if req.context else None)
+    url_str = str(req.context.url) if (req.context and req.context.url) else None
+    domain, path = RequestRecord.parse_domain_path(url_str)
     rec = RequestRecord(user_id=current_user.id, domain=domain, path=path, model=req.model, model_provider=req.model_provider, status="streaming")
     db.add(rec)
     db.commit()
