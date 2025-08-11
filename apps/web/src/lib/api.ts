@@ -40,6 +40,7 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   me: () => request("/api/v1/user/me"),
+  myUsage: () => request('/api/v1/user/usage'),
   listKeys: () => request("/api/v1/keys"),
   createKey: (
     provider: "openai" | "anthropic" | "gemini",
