@@ -6,6 +6,7 @@ from app.api.deps import get_current_user, get_db
 from app.core.crypto import decrypt_value
 from app.models.key import ApiKey
 from app.models.user import User
+from app.models.request import RequestRecord
 from app.schemas.generate import GenerationRequest, GenerationResponse
 from app.services.adapters import get_adapter
 
@@ -31,12 +32,24 @@ async def generate(req: GenerationRequest, db: Session = Depends(get_db), curren
 
     api_key = _resolve_user_key(db, current_user.id, req.model_provider)
     adapter = get_adapter(req.model_provider)
+
+    domain, path = RequestRecord.parse_domain_path(req.context.url if req.context else None)
+    rec = RequestRecord(user_id=current_user.id, domain=domain, path=path, model=req.model, model_provider=req.model_provider, status="started")
+    db.add(rec)
+    db.commit()
+    db.refresh(rec)
+
     try:
         result = adapter.generate(current_user, req, api_key)
+        rec.status = "success"
+        db.add(rec)
+        db.commit()
+        return result
     except Exception as e:
+        rec.status = "error"
+        db.add(rec)
+        db.commit()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
-
-    return result
 
 
 @router.post("/generate/stream")
@@ -47,12 +60,23 @@ async def generate_stream(req: GenerationRequest, db: Session = Depends(get_db),
     api_key = _resolve_user_key(db, current_user.id, req.model_provider)
     adapter = get_adapter(req.model_provider)
 
+    domain, path = RequestRecord.parse_domain_path(req.context.url if req.context else None)
+    rec = RequestRecord(user_id=current_user.id, domain=domain, path=path, model=req.model, model_provider=req.model_provider, status="streaming")
+    db.add(rec)
+    db.commit()
+
     def event_gen():
         try:
             for delta in adapter.generate_stream(current_user, req, api_key):
                 yield f"data: {delta}\n\n"
             yield "data: [DONE]\n\n"
+            rec.status = "success"
+            db.add(rec)
+            db.commit()
         except Exception as e:
+            rec.status = "error"
+            db.add(rec)
+            db.commit()
             yield f"event: error\ndata: {str(e)}\n\n"
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
