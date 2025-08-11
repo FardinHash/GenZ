@@ -14,7 +14,12 @@ export default function Popup() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getSettings().then((s) => setToken(s.authToken));
+    getSettings().then((s) => {
+      setToken(s.authToken);
+      if (s.defaultProvider) setProvider(s.defaultProvider);
+      if (s.defaultModel) setModel(s.defaultModel);
+      if (s.defaultTone) setTone(s.defaultTone);
+    });
   }, []);
 
   async function handleLogin() {
@@ -31,22 +36,13 @@ export default function Popup() {
     }
   }
 
-  async function handleGenerate() {
+  async function handleSaveDefaults() {
     setError(null);
     setLoading(true);
     try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      const selection = await chrome.scripting.executeScript<{ selection: string } | null>({
-        target: { tabId: tab.id! },
-        func: () => ({ selection: window.getSelection()?.toString() ?? '' }),
-      });
-      const selectedText = selection?.[0]?.result?.selection ?? '';
-      const text = await apiGenerate({ model, provider, prompt: selectedText || 'Compose a friendly short reply.', tone, selectedText });
-      // send to content script to insert
-      await chrome.tabs.sendMessage(tab.id!, { type: 'GENZ_INSERT_TEXT', text });
-      window.close();
+      await saveSettings({ defaultProvider: provider, defaultModel: model, defaultTone: tone });
     } catch (e: any) {
-      setError(e?.message ?? 'Generate failed');
+      setError(e?.message ?? 'Save failed');
     } finally {
       setLoading(false);
     }
@@ -65,7 +61,7 @@ export default function Popup() {
         </div>
       ) : (
         <div className="card">
-          <h2>Compose</h2>
+          <h2>Defaults</h2>
           <label>
             Provider
             <select value={provider} onChange={(e) => setProvider(e.target.value as any)}>
@@ -87,7 +83,8 @@ export default function Popup() {
               <option value="assertive">Assertive</option>
             </select>
           </label>
-          <button disabled={loading} onClick={handleGenerate}>Generate</button>
+          <button disabled={loading} onClick={handleSaveDefaults}>Save</button>
+          <p style={{ fontSize: 11, color: '#666' }}>Select text on the page, click any input, then press the "Compose with AI" button to insert.</p>
         </div>
       )}
 
