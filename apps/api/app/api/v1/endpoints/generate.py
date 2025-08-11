@@ -95,8 +95,8 @@ async def generate_stream(req: GenerationRequest, db: Session = Depends(get_db),
     db.commit()
 
     def event_gen():
+        out_total = 0
         try:
-            out_total = 0
             for delta in adapter.generate_stream(current_user, req, api_key):
                 out_total += estimate_tokens(req.model_provider, delta, req.model)
                 yield f"data: {delta}\n\n"
@@ -107,10 +107,11 @@ async def generate_stream(req: GenerationRequest, db: Session = Depends(get_db),
             db.add(rec)
             db.commit()
         except Exception as e:
-            rec.status = "error"
+            rec.status = "canceled" if out_total > 0 else "error"
             db.add(rec)
             db.commit()
-            yield f"event: error\ndata: {str(e)}\n\n"
+            if out_total == 0:
+                yield f"event: error\ndata: {str(e)}\n\n"
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
 
