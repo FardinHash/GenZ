@@ -1,14 +1,31 @@
 const INJECTED_ATTR = 'data-genz-injected';
 let lastFocused: HTMLElement | null = null;
 
+const SELECTOR = 'textarea, input[type="text"], input[type="search"], input[type="email"], input[type="url"], input[type="tel"], [contenteditable="true"]';
+
+function isVisible(el: HTMLElement): boolean {
+  const rect = el.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return false;
+  const style = window.getComputedStyle(el);
+  if (style.display === 'none' || style.visibility === 'hidden') return false;
+  return true;
+}
+
 function isEligible(el: Element): boolean {
+  if (!(el instanceof HTMLElement)) return false;
+  if (!isVisible(el)) return false;
+
   if (el instanceof HTMLInputElement) {
     if (el.type === 'password' || el.type === 'hidden') return false;
+    if (el.disabled || el.readOnly) return false;
     return el.type === 'text' || el.type === 'search' || el.type === 'email' || el.type === 'url' || el.type === 'tel';
   }
-  if (el instanceof HTMLTextAreaElement) return true;
-  const contentEditable = (el as HTMLElement).isContentEditable || el.getAttribute('contenteditable') === 'true';
-  return contentEditable;
+  if (el instanceof HTMLTextAreaElement) {
+    if (el.disabled || el.readOnly) return false;
+    return true;
+  }
+  if (el.isContentEditable !== true) return false;
+  return true;
 }
 
 function createButton(target: HTMLElement): HTMLButtonElement {
@@ -25,7 +42,6 @@ function createButton(target: HTMLElement): HTMLButtonElement {
 
   btn.addEventListener('click', () => {
     console.debug('[genz] compose clicked');
-    // For now the popup initiates the generate flow
   });
 
   return btn;
@@ -45,21 +61,42 @@ function injectForElement(el: Element) {
   });
 }
 
-function scan() {
-  const candidates = document.querySelectorAll('textarea, input[type="text"], input[type="search"], input[type="email"], input[type="url"], input[type="tel"], [contenteditable="true"], [contenteditable]');
-  candidates.forEach(injectForElement);
+function scanRoot(root: ParentNode) {
+  // If the root itself is a candidate
+  if (root instanceof Element && (root.matches?.(SELECTOR) ?? false)) {
+    injectForElement(root as Element);
+  }
+  root.querySelectorAll?.(SELECTOR).forEach(injectForElement);
+}
+
+let pendingNodes = new Set<ParentNode>();
+let scheduled = false;
+
+function scheduleProcess() {
+  if (scheduled) return;
+  scheduled = true;
+  const runner = () => {
+    const nodes = Array.from(pendingNodes);
+    pendingNodes.clear();
+    scheduled = false;
+    for (const n of nodes) scanRoot(n);
+  };
+  if ('requestIdleCallback' in window) {
+    (window as any).requestIdleCallback(runner, { timeout: 200 });
+  } else {
+    setTimeout(runner, 50);
+  }
 }
 
 const observer = new MutationObserver((mutations) => {
   for (const m of mutations) {
     m.addedNodes.forEach((node) => {
       if (node.nodeType === Node.ELEMENT_NODE) {
-        const el = node as Element;
-        if (isEligible(el)) injectForElement(el);
-        el.querySelectorAll?.('textarea, input[type="text"], input[type="search"], input[type="email"], input[type="url"], input[type="tel"], [contenteditable="true"], [contenteditable]').forEach(injectForElement);
+        pendingNodes.add(node as ParentNode);
       }
     });
   }
+  if (pendingNodes.size > 0) scheduleProcess();
 });
 
 function insertTextAtTarget(target: HTMLElement, text: string) {
@@ -89,10 +126,10 @@ chrome.runtime.onMessage.addListener((msg) => {
 
 function init() {
   try {
-    scan();
+    scanRoot(document);
     observer.observe(document.documentElement, { childList: true, subtree: true });
     document.addEventListener('readystatechange', () => {
-      if (document.readyState === 'complete') scan();
+      if (document.readyState === 'complete') scanRoot(document);
     });
   } catch (e) {
     console.error('[genz] content init error', e);
