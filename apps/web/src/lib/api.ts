@@ -52,4 +52,5 @@ export const api = {
     }),
   deleteKey: (id: string) =>
     request(`/api/v1/keys/${id}`, { method: "DELETE" }),
+  listRequests: (limit = 50) => request(`/api/v1/requests?limit=${limit}`),
 };

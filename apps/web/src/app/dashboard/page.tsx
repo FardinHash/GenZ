@@ -11,6 +11,7 @@ export default function DashboardPage() {
     "openai"
   );
   const [keyValue, setKeyValue] = useState("");
+  const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,6 +26,8 @@ export default function DashboardPage() {
         setUser(me);
         const list = await api.listKeys();
         setKeys(list);
+        const reqs = await api.listRequests(50);
+        setRequests(reqs);
       } catch (e: any) {
         setError(e?.message ?? "Failed to load");
       } finally {
@@ -75,7 +78,7 @@ export default function DashboardPage() {
       )}
 
       <section
-        style={{ border: "1px solid #eee", padding: 12, borderRadius: 8 }}
+        style={{ border: "1px solid #eee", padding: 12, borderRadius: 8, marginBottom: 16 }}
       >
         <h2>Provider API Keys</h2>
         <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
@@ -110,6 +113,36 @@ export default function DashboardPage() {
             </li>
           ))}
         </ul>
+      </section>
+
+      <section
+        style={{ border: "1px solid #eee", padding: 12, borderRadius: 8 }}
+      >
+        <h2>Recent Requests</h2>
+        <table style={{ width: "100%", fontSize: 12 }}>
+          <thead>
+            <tr>
+              <th align="left">When</th>
+              <th align="left">Provider</th>
+              <th align="left">Model</th>
+              <th align="left">Domain</th>
+              <th align="left">Path</th>
+              <th align="left">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {requests.map((r) => (
+              <tr key={r.id}>
+                <td>{new Date(r.created_at).toLocaleString()}</td>
+                <td>{r.model_provider}</td>
+                <td>{r.model}</td>
+                <td>{r.domain || '-'}</td>
+                <td style={{ maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.path || '-'}</td>
+                <td>{r.status}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </section>
     </main>
   );
