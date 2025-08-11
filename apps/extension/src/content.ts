@@ -87,10 +87,21 @@ function createPopover() {
   output.style.padding = "6px";
   output.style.minHeight = "40px";
 
-  actions.append(btnStart, btnCancel, btnInsert);
-  wrap.append(title, actions, output);
+  const includeWrap = document.createElement("label");
+  includeWrap.style.display = "flex";
+  includeWrap.style.alignItems = "center";
+  includeWrap.style.gap = "6px";
+  includeWrap.style.fontSize = "12px";
+  const includeCb = document.createElement("input");
+  includeCb.type = "checkbox";
+  const includeTxt = document.createElement("span");
+  includeTxt.textContent = "Include selection";
+  includeWrap.append(includeCb, includeTxt);
 
-  return { wrap, btnStart, btnCancel, btnInsert, output };
+  actions.append(btnStart, btnCancel, btnInsert);
+  wrap.append(title, actions, includeWrap, output);
+
+  return { wrap, btnStart, btnCancel, btnInsert, output, includeCb };
 }
 
 let currentPopover: ReturnType<typeof createPopover> | null = null;
@@ -126,6 +137,7 @@ function openPopover(target: HTMLElement) {
     chrome.runtime.sendMessage({
       type: "GENZ_STREAM_START",
       selectedText: selection,
+      includeSelection: !!pop.includeCb.checked,
     });
   };
   const cancel = async () => {

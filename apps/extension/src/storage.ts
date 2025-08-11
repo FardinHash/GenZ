@@ -4,6 +4,7 @@ export type GenzSettings = {
   defaultProvider?: 'openai' | 'anthropic' | 'gemini';
   defaultModel?: string;
   defaultTone?: string;
+  includeSelectionDefault?: boolean;
 };
 
 const STORAGE_KEY = 'genz:settings';
@@ -17,6 +18,7 @@ export async function getSettings(): Promise<GenzSettings> {
     defaultProvider: val.defaultProvider ?? 'openai',
     defaultModel: val.defaultModel ?? 'gpt-4o-mini',
     defaultTone: val.defaultTone ?? 'concise',
+    includeSelectionDefault: val.includeSelectionDefault ?? false,
   };
 }
 

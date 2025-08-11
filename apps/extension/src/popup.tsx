@@ -1,15 +1,18 @@
-import { useEffect, useState } from 'react';
-import './popup.css';
-import { apiGenerate, apiLogin } from './api';
-import { getSettings, saveSettings } from './storage';
+import { useEffect, useState } from "react";
+import "./popup.css";
+import { apiLogin } from "./api";
+import { getSettings, saveSettings } from "./storage";
 
 export default function Popup() {
-  const [model, setModel] = useState('gpt-4o-mini');
-  const [provider, setProvider] = useState<'openai' | 'anthropic' | 'gemini'>('openai');
-  const [tone, setTone] = useState('concise');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [model, setModel] = useState("gpt-4o-mini");
+  const [provider, setProvider] = useState<"openai" | "anthropic" | "gemini">(
+    "openai"
+  );
+  const [tone, setTone] = useState("concise");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [token, setToken] = useState<string | undefined>(undefined);
+  const [includeSelectionDefault, setIncludeSelectionDefault] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -19,6 +22,7 @@ export default function Popup() {
       if (s.defaultProvider) setProvider(s.defaultProvider);
       if (s.defaultModel) setModel(s.defaultModel);
       if (s.defaultTone) setTone(s.defaultTone);
+      setIncludeSelectionDefault(!!s.includeSelectionDefault);
     });
   }, []);
 
@@ -30,7 +34,7 @@ export default function Popup() {
       await saveSettings({ authToken: t });
       setToken(t);
     } catch (e: any) {
-      setError(e?.message ?? 'Login failed');
+      setError(e?.message ?? "Login failed");
     } finally {
       setLoading(false);
     }
@@ -40,9 +44,14 @@ export default function Popup() {
     setError(null);
     setLoading(true);
     try {
-      await saveSettings({ defaultProvider: provider, defaultModel: model, defaultTone: tone });
+      await saveSettings({
+        defaultProvider: provider,
+        defaultModel: model,
+        defaultTone: tone,
+        includeSelectionDefault,
+      });
     } catch (e: any) {
-      setError(e?.message ?? 'Save failed');
+      setError(e?.message ?? "Save failed");
     } finally {
       setLoading(false);
     }
@@ -55,19 +64,37 @@ export default function Popup() {
       {!token ? (
         <div className="card">
           <h2>Login</h2>
-          <input placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          <input placeholder="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-          <button disabled={loading} onClick={handleLogin}>Login</button>
+          <input
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <input
+            placeholder="Password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <button disabled={loading} onClick={handleLogin}>
+            Login
+          </button>
         </div>
       ) : (
         <div className="card">
           <h2>Defaults</h2>
           <label>
             Provider
-            <select value={provider} onChange={(e) => setProvider(e.target.value as any)}>
+            <select
+              value={provider}
+              onChange={(e) => setProvider(e.target.value as any)}
+            >
               <option value="openai">OpenAI</option>
-              <option value="anthropic" disabled>Anthropic (soon)</option>
-              <option value="gemini" disabled>Gemini (soon)</option>
+              <option value="anthropic" disabled>
+                Anthropic (soon)
+              </option>
+              <option value="gemini" disabled>
+                Gemini (soon)
+              </option>
             </select>
           </label>
           <label>
@@ -83,8 +110,21 @@ export default function Popup() {
               <option value="assertive">Assertive</option>
             </select>
           </label>
-          <button disabled={loading} onClick={handleSaveDefaults}>Save</button>
-          <p style={{ fontSize: 11, color: '#666' }}>Select text on the page, click any input, then press the "Compose with AI" button to insert.</p>
+          <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input
+              type="checkbox"
+              checked={includeSelectionDefault}
+              onChange={(e) => setIncludeSelectionDefault(e.target.checked)}
+            />
+            Include selection by default
+          </label>
+          <button disabled={loading} onClick={handleSaveDefaults}>
+            Save
+          </button>
+          <p style={{ fontSize: 11, color: "#666" }}>
+            Select text on the page, click any input, then press the "Compose
+            with AI" button to insert.
+          </p>
         </div>
       )}
 
@@ -95,6 +135,6 @@ export default function Popup() {
 }
 
 // Mount
-import { createRoot } from 'react-dom/client';
-const root = createRoot(document.getElementById('root')!);
+import { createRoot } from "react-dom/client";
+const root = createRoot(document.getElementById("root")!);
 root.render(<Popup />);
