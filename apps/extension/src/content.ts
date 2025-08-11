@@ -135,6 +135,7 @@ function openPopover(target: HTMLElement) {
   const insert = async () => {
     if (!buffer) return;
     insertTextAtTarget(target, buffer);
+    closePopover();
   };
 
   pop.btnStart.addEventListener("click", start);
