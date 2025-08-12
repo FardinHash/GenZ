@@ -1,6 +1,7 @@
 const INJECTED_ATTR = "data-genz-injected";
 let lastFocused: HTMLElement | null = null;
 let lastSelectionText: string = "";
+let isDisabledSite = false;
 
 const SELECTOR =
   'textarea, input[type="text"], input[type="search"], input[type="email"], input[type="url"], input[type="tel"], [contenteditable="true"]';
@@ -16,6 +17,7 @@ function isVisible(el: HTMLElement): boolean {
 }
 
 function isEligible(el: Element): boolean {
+  if (isDisabledSite) return false;
   if (!(el instanceof HTMLElement)) return false;
   if (!isVisible(el)) return false;
 
@@ -365,13 +367,29 @@ chrome.runtime.onMessage.addListener((msg) => {
 
 function init() {
   try {
-    scanRoot(document);
-    observer.observe(document.documentElement, {
-      childList: true,
-      subtree: true,
-    });
+    try {
+      chrome.storage.local.get("genz:settings", (res) => {
+        const cfg = (res && (res as any)["genz:settings"]) || {};
+        const disabled: string[] = cfg.disabledDomains || [];
+        const host = window.location.hostname;
+        isDisabledSite = disabled.includes(host);
+        if (isDisabledSite) return;
+        scanRoot(document);
+        observer.observe(document.documentElement, {
+          childList: true,
+          subtree: true,
+        });
+      });
+    } catch {
+      scanRoot(document);
+      observer.observe(document.documentElement, {
+        childList: true,
+        subtree: true,
+      });
+    }
     document.addEventListener("readystatechange", () => {
-      if (document.readyState === "complete") scanRoot(document);
+      if (document.readyState === "complete" && !isDisabledSite)
+        scanRoot(document);
     });
     trackSelection();
   } catch (e) {
