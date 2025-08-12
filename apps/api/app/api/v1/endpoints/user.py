@@ -8,6 +8,7 @@ from app.api.deps import get_current_user, get_db
 from app.models.user import User
 from app.schemas.user import UserPublic
 from app.models.request import RequestRecord
+from app.core.quota import get_user_plan, monthly_tokens_used, quota_remaining
 
 router = APIRouter()
 
@@ -58,10 +59,18 @@ async def my_usage(db: Session = Depends(get_db), current_user: User = Depends(g
         .group_by(RequestRecord.model_provider)
         .all()
     )
+
+    plan = get_user_plan(db, current_user)
+    monthly_used = monthly_tokens_used(db, current_user)
+    monthly_remaining = quota_remaining(db, current_user)
+
     return {
         "total": int(total),
         "tokens_in": int(tokens_in_sum),
         "tokens_out": int(tokens_out_sum),
         "cost_usd": float(cost_sum),
         "by_provider": [{"provider": p, "count": c} for p, c in by_provider],
+        "plan": {"name": plan.name, "token_quota": int(plan.token_quota)},
+        "monthly_used": int(monthly_used),
+        "monthly_remaining": int(monthly_remaining),
     } 
