@@ -22,8 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       KUBE_CONFIG_BASE64: ${{ secrets.KUBE_CONFIG_BASE64 }}
-      API_IMAGE_REPO: ghcr.io/${{ github.repository_owner }}/genz-api
-      WEB_IMAGE_REPO: ghcr.io/${{ github.repository_owner }}/genz-web
+      API_IMAGE_REPO: ghcr.io/intellwe/genz-api
+      WEB_IMAGE_REPO: ghcr.io/intellwe/genz-web
       IMAGE_PULL_SECRET_NAME: regcred
       SECRET_REF: genz-api-env
       DB_HOST: postgres-postgresql
@@ -34,9 +34,22 @@ jobs:
 
       - name: Setup kubectl
         if: env.KUBE_CONFIG_BASE64 != ''
+        shell: bash
         run: |
-          mkdir -p $HOME/.kube
-          echo "$KUBE_CONFIG_BASE64" | base64 -d > $HOME/.kube/config
+          set -euo pipefail
+          mkdir -p "$HOME/.kube"
+          # If the secret looks like raw kubeconfig (starts with apiVersion), write as-is.
+          if echo "$KUBE_CONFIG_BASE64" | head -n1 | grep -q "apiVersion:"; then
+            echo "Detected raw kubeconfig in secret"
+            printf "%s" "$KUBE_CONFIG_BASE64" > "$HOME/.kube/config"
+          else
+            echo "Decoding base64 kubeconfig from secret"
+            # Try decode; if it fails, write as-is
+            if ! printf "%s" "$KUBE_CONFIG_BASE64" | base64 -d > "$HOME/.kube/config" 2>/dev/null; then
+              echo "Base64 decode failed; writing content as-is"
+              printf "%s" "$KUBE_CONFIG_BASE64" > "$HOME/.kube/config"
+            fi
+          fi
           kubectl version --client
 
       - name: Setup Helm
