@@ -3,6 +3,8 @@ image:
   tag: latest
   pullPolicy: IfNotPresent
 
+imagePullSecrets: [] # e.g., [{ name: regcred }]
+
 replicaCount: 2
 
 service:
@@ -16,7 +18,7 @@ env:
   JWT_SECRET_KEY: "change-me"
   ACCESS_TOKEN_EXPIRE_MINUTES: "60"
 
-secretRef: ""
+secretRef: "" # set to mount a secret with extra envs
 
 ingress:
   enabled: false

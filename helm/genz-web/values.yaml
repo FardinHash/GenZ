@@ -3,6 +3,8 @@ image:
   tag: latest
   pullPolicy: IfNotPresent
 
+imagePullSecrets: [] # e.g., [{ name: regcred }]
+
 replicaCount: 2
 
 service:
