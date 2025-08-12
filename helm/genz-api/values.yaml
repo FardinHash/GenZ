@@ -1,9 +1,9 @@
 image:
-  repository: ghcr.io/OWNER/genz-api
+  repository: ghcr.io/intellwe/genz-api
   tag: latest
   pullPolicy: IfNotPresent
 
-imagePullSecrets: [] # e.g., [{ name: regcred }]
+imagePullSecrets: [{ name: regcred }]
 
 replicaCount: 2
 
@@ -18,7 +18,12 @@ env:
   JWT_SECRET_KEY: "change-me"
   ACCESS_TOKEN_EXPIRE_MINUTES: "60"
 
-secretRef: "" # set to mount a secret with extra envs
+secret:
+  create: false
+  name: genz-api-env
+  data: {}
+
+secretRef: ""
 
 ingress:
   enabled: false
@@ -31,4 +36,28 @@ ingress:
           pathType: Prefix
   tls: []
 
-resources: {}
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+  # targetMemoryUtilizationPercentage: 80
+
+pdb:
+  enabled: false
+  minAvailable: 1
+
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  scrapeTimeout: 10s
+  labels: {}
+  annotations: {}

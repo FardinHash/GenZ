@@ -1,0 +1,58 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      namespace:
+        description: "Kubernetes namespace"
+        required: true
+        default: "genz"
+      environment:
+        description: "values file suffix (e.g., prod)"
+        required: false
+        default: ""
+
+jobs:
+  helm-deploy:
+    runs-on: ubuntu-latest
+    env:
+      KUBE_CONFIG_BASE64: ${{ secrets.KUBE_CONFIG_BASE64 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        if: env.KUBE_CONFIG_BASE64 != ''
+        run: |
+          mkdir -p $HOME/.kube
+          echo "$KUBE_CONFIG_BASE64" | base64 -d > $HOME/.kube/config
+          kubectl version --client
+
+      - name: Setup Helm
+        if: env.KUBE_CONFIG_BASE64 != ''
+        uses: azure/setup-helm@v4
+
+      - name: Create namespace
+        if: env.KUBE_CONFIG_BASE64 != ''
+        run: |
+          kubectl create namespace "${{ github.event.inputs.namespace }}" || true
+
+      - name: Deploy genz-api
+        if: env.KUBE_CONFIG_BASE64 != ''
+        run: |
+          SUFFIX=${{ github.event.inputs.environment }}
+          EXTRA=""
+          if [ -n "$SUFFIX" ] && [ -f helm/genz-api/values-$SUFFIX.yaml ]; then EXTRA="-f helm/genz-api/values-$SUFFIX.yaml"; fi
+          helm upgrade --install genz-api helm/genz-api -n "${{ github.event.inputs.namespace }}" $EXTRA
+
+      - name: Deploy genz-web
+        if: env.KUBE_CONFIG_BASE64 != ''
+        run: |
+          SUFFIX=${{ github.event.inputs.environment }}
+          EXTRA=""
+          if [ -n "$SUFFIX" ] && [ -f helm/genz-web/values-$SUFFIX.yaml ]; then EXTRA="-f helm/genz-web/values-$SUFFIX.yaml"; fi
+          helm upgrade --install genz-web helm/genz-web -n "${{ github.event.inputs.namespace }}" $EXTRA
+
+      - name: Skip (no kubeconfig provided)
+        if: env.KUBE_CONFIG_BASE64 == ''
+        run: echo "No KUBE_CONFIG_BASE64 secret; skipping deploy."

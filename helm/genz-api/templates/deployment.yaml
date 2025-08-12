@@ -27,11 +27,29 @@ spec:
             - name: {{ $k }}
               value: "{{ $v }}"
             {{- end }}
-          {{- if .Values.secretRef }}
+          {{- if or .Values.secretRef .Values.secret.create }}
           envFrom:
             - secretRef:
-                name: {{ .Values.secretRef }}
+                name: {{ default .Values.secret.name .Values.secretRef }}
           {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
 ---
 {{- if .Values.ingress.enabled }}
 apiVersion: networking.k8s.io/v1
@@ -65,4 +83,16 @@ spec:
   tls:
     {{- toYaml . | nindent 4 }}
   {{- end }}
+{{- end }}
+---
+{{- if .Values.secret.create }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Values.secret.name }}
+  labels:
+    app: {{ include "genz-api.fullname" . }}
+type: Opaque
+stringData:
+  {{- toYaml .Values.secret.data | nindent 2 }}
 {{- end }} 

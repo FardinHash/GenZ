@@ -1,0 +1,11 @@
+{{- if .Values.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "genz-api.fullname" . }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ include "genz-api.fullname" . }}
+  minAvailable: {{ .Values.pdb.minAvailable }}
+{{- end }} 
