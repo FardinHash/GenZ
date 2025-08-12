@@ -62,3 +62,45 @@ scrape_configs:
 
 - Use `.env` in dev; in staging/prod store in cloud secret manager or Vault
 - Stripe keys, JWT secrets, Sentry DSN, DB creds
+
+## Production deployment (Kubernetes)
+
+- Prepare a managed cluster (EKS/GKE/AKS). Ensure cluster has:
+
+  - Ingress controller (NGINX), cert-manager for TLS
+  - ExternalDNS (optional) to automate DNS records
+  - Prometheus stack (optional) for metrics; enable ServiceMonitor in API chart
+
+- Container registry
+
+  - Push images via CI to GHCR or Docker Hub
+  - Create an imagePullSecret in your namespace and set `imagePullSecrets` in chart values
+
+- Datastores
+
+  - Postgres: use a managed DB (RDS/CloudSQL) or a Helm chart; set `DATABASE_URL`
+  - Redis: use managed Redis (ElastiCache/Memorystore) or a Helm chart; set `REDIS_URL`
+
+- Secrets
+
+  - Prefer Kubernetes Secrets (sealed-secrets/External Secrets if available)
+  - For API chart set either `secretRef` (existing Secret) or `secret.create=true` with `secret.data`
+  - Required keys: `JWT_SECRET_KEY`, `ENCRYPTION_SECRET`, `ENCRYPTION_SALT`, Stripe keys, etc.
+
+- Helm install
+
+  - `helm upgrade --install genz-api helm/genz-api -n genz -f helm/genz-api/values-prod.yaml`
+  - `helm upgrade --install genz-web helm/genz-web -n genz -f helm/genz-web/values-prod.yaml`
+
+- Ingress and TLS
+
+  - Set `ingress.enabled=true`, `className`, hostnames, and `tls` secrets in prod values
+
+- Autoscaling & resiliency
+
+  - Enable `autoscaling.enabled=true` and configure HPA
+  - Enable `pdb.enabled=true` to maintain availability during maintenance
+
+- Observability
+  - API exposes `/metrics` for Prometheus scraping; enable `serviceMonitor.enabled=true` when using kube-prometheus-stack
+  - Configure Sentry DSNs via Secrets and set env vars in values

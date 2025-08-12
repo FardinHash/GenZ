@@ -1,7 +1,9 @@
 image:
-  repository: ghcr.io/OWNER/genz-web
+  repository: ghcr.io/intellwe/genz-web
   tag: latest
   pullPolicy: IfNotPresent
+
+imagePullSecrets: [{ name: regcred }]
 
 replicaCount: 2
 
@@ -11,6 +13,11 @@ service:
 
 env:
   NEXT_PUBLIC_API_BASE_URL: "http://genz-api:8000"
+
+secret:
+  create: false
+  name: genz-web-env
+  data: {}
 
 secretRef: ""
 
@@ -25,4 +32,20 @@ ingress:
           pathType: Prefix
   tls: []
 
-resources: {}
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+
+pdb:
+  enabled: false
+  minAvailable: 1
