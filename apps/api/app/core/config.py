@@ -17,9 +17,14 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
 
+    refresh_jwt_secret_key: str | None = None
+    refresh_token_expire_minutes: int = 60 * 24 * 30
+
+    # Encryption for provider API keys (PBKDF2 -> Fernet)
     encryption_secret: str = "change-this-dev-secret"
     encryption_salt: str = "genz-salt"
 
+    # Rate limiting / cache
     redis_url: str = "redis://localhost:6379/0"
     rate_limit_requests_per_minute: int = 30
 

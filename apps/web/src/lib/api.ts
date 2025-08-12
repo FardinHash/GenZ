@@ -12,6 +12,17 @@ export function setToken(token: string | null) {
   else localStorage.removeItem("genz_token");
 }
 
+function getRefreshToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("genz_refresh_token");
+}
+
+function setRefreshToken(token: string | null) {
+  if (typeof window === "undefined") return;
+  if (token) localStorage.setItem("genz_refresh_token", token);
+  else localStorage.removeItem("genz_refresh_token");
+}
+
 async function doFetch(path: string, init: RequestInit = {}) {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -22,14 +33,24 @@ async function doFetch(path: string, init: RequestInit = {}) {
   return fetch(`${API_BASE}${path}`, { ...init, headers });
 }
 
-async function request(path: string, init: RequestInit = {}, retry = true): Promise<any> {
+async function request(
+  path: string,
+  init: RequestInit = {},
+  retry = true
+): Promise<any> {
   let res = await doFetch(path, init);
   if (res.status === 401 && retry) {
-    const r = await doFetch('/api/v1/auth/refresh', { method: 'POST' });
-    if (r.ok) {
-      const data = await r.json();
-      setToken(data.access_token);
-      res = await doFetch(path, init);
+    const rt = getRefreshToken();
+    if (rt) {
+      const r = await fetch(`${API_BASE}/api/v1/auth/refresh`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${rt}` },
+      });
+      if (r.ok) {
+        const data = await r.json();
+        setToken(data.access_token);
+        res = await doFetch(path, init);
+      }
     }
   }
   if (!res.ok) {
@@ -41,17 +62,22 @@ async function request(path: string, init: RequestInit = {}, retry = true): Prom
 }
 
 export const api = {
-  signup: (email: string, password: string) =>
-    request("/api/v1/auth/signup", {
+  signup: async (email: string, password: string) => {
+    const res = await request("/api/v1/auth/signup", {
       method: "POST",
       body: JSON.stringify({ email, password }),
-    }),
+    });
+    setToken(res.access_token);
+    setRefreshToken(res.refresh_token);
+    return res;
+  },
   login: async (email: string, password: string) => {
     const res = await request("/api/v1/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
     });
     setToken(res.access_token);
+    setRefreshToken(res.refresh_token);
     return res;
   },
   me: () => request("/api/v1/user/me"),
