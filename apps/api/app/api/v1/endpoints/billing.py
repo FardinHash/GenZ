@@ -10,6 +10,13 @@ from app.models.user import User
 router = APIRouter()
 
 
+def _get_billing_settings(user: User) -> dict:
+    current = user.settings or {}
+    billing = current.get("billing") or {}
+    current["billing"] = billing
+    return billing
+
+
 @router.post("/subscribe")
 async def subscribe(plan: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     settings = get_settings()
@@ -26,6 +33,8 @@ async def subscribe(plan: str, db: Session = Depends(get_db), current_user: User
     if not price_id:
         raise HTTPException(status_code=400, detail="Invalid plan")
 
+    customer_id = (current_user.settings or {}).get("billing", {}).get("stripe_customer_id")
+
     try:
         session = stripe.checkout.Session.create(
             mode="subscription",
@@ -34,8 +43,32 @@ async def subscribe(plan: str, db: Session = Depends(get_db), current_user: User
             cancel_url="http://localhost:3000/dashboard?checkout=cancel",
             client_reference_id=str(current_user.id),
             customer_email=current_user.email,
+            customer=customer_id if customer_id else None,
+            subscription_data={
+                "metadata": {"user_id": str(current_user.id)}
+            },
+            allow_promotion_codes=True,
         )
         return {"checkout_url": session.url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/portal")
+async def create_billing_portal(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    settings = get_settings()
+    if not settings.stripe_secret_key:
+        raise HTTPException(status_code=500, detail="Stripe not configured")
+    stripe.api_key = settings.stripe_secret_key
+    customer_id = (current_user.settings or {}).get("billing", {}).get("stripe_customer_id")
+    if not customer_id:
+        raise HTTPException(status_code=400, detail="No Stripe customer on file")
+    try:
+        sess = stripe.billing_portal.Session.create(
+            customer=customer_id,
+            return_url="http://localhost:3000/dashboard",
+        )
+        return {"portal_url": sess.url}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -55,27 +88,73 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    if event["type"] in {"checkout.session.completed", "customer.subscription.updated", "customer.subscription.created"}:
-        data = event["data"]["object"]
-        client_ref = data.get("client_reference_id") or data.get("metadata", {}).get("user_id")
-        if client_ref:
-            user = db.query(User).filter(User.id == client_ref).first()
-            if user:
-                price_id = None
-                if "lines" in data and data["lines"]["data"]:
-                    price_id = data["lines"]["data"][0]["price"]["id"]
-                elif "subscription" in data and data["subscription"]:
-                    pass
-                plan_name = None
-                settings = get_settings()
-                if price_id == settings.stripe_price_basic:
-                    plan_name = "Basic"
-                elif price_id == settings.stripe_price_pro:
-                    plan_name = "Pro"
-                elif price_id == settings.stripe_price_premium:
-                    plan_name = "Premium"
-                if plan_name:
-                    user.plan_id = plan_name
-                    db.add(user)
-                    db.commit()
-    return JSONResponse(status_code=200, content={"received": True}) 
+    def set_plan_from_price(user: User, price_id: str | None):
+        name = None
+        if price_id == settings.stripe_price_basic:
+            name = "Basic"
+        elif price_id == settings.stripe_price_pro:
+            name = "Pro"
+        elif price_id == settings.stripe_price_premium:
+            name = "Premium"
+        if name:
+            user.plan_id = name
+
+    etype = event["type"]
+    data = event["data"]["object"]
+
+    if etype == "checkout.session.completed":
+        user = None
+        uid = data.get("client_reference_id")
+        if uid:
+            user = db.query(User).filter(User.id == uid).first()
+        if user:
+            billing = _get_billing_settings(user)
+            billing["stripe_customer_id"] = data.get("customer")
+            billing["stripe_subscription_id"] = data.get("subscription")
+            price_id = None
+            if data.get("line_items") and data["line_items"]["data"]:
+                price_id = data["line_items"]["data"][0]["price"]["id"]
+            set_plan_from_price(user, price_id)
+            db.add(user)
+            db.commit()
+
+    elif etype in {"customer.subscription.created", "customer.subscription.updated"}:
+        sub = data
+        uid = (sub.get("metadata") or {}).get("user_id")
+        user = None
+        if uid:
+            user = db.query(User).filter(User.id == uid).first()
+        if not user:
+            cust_id = sub.get("customer")
+            if cust_id:
+                user = db.query(User).filter(User.settings["billing"]["stripe_customer_id"].astext == cust_id).first()  # type: ignore
+        if user:
+            billing = _get_billing_settings(user)
+            billing["stripe_customer_id"] = sub.get("customer")
+            billing["stripe_subscription_id"] = sub.get("id")
+            price_id = None
+            items = (sub.get("items") or {}).get("data") or []
+            if items:
+                price_id = items[0]["price"]["id"]
+            set_plan_from_price(user, price_id)
+            db.add(user)
+            db.commit()
+
+    elif etype == "customer.subscription.deleted":
+        sub = data
+        uid = (sub.get("metadata") or {}).get("user_id")
+        user = None
+        if uid:
+            user = db.query(User).filter(User.id == uid).first()
+        if not user:
+            cust_id = sub.get("customer")
+            if cust_id:
+                user = db.query(User).filter(User.settings["billing"]["stripe_customer_id"].astext == cust_id).first()  # type: ignore
+        if user:
+            billing = _get_billing_settings(user)
+            billing["stripe_subscription_id"] = None
+            user.plan_id = "Basic"
+            db.add(user)
+            db.commit()
+
+        return JSONResponse(status_code=200, content={"received": True}) 
