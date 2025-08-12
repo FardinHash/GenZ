@@ -20,7 +20,6 @@ function isEligible(el: Element): boolean {
   if (isDisabledSite) return false;
   if (!(el instanceof HTMLElement)) return false;
   if (!isVisible(el)) return false;
-
   if (el instanceof HTMLInputElement) {
     if (el.type === "password" || el.type === "hidden") return false;
     if (el.disabled || el.readOnly) return false;
@@ -44,8 +43,8 @@ function createPopover() {
   const wrap = document.createElement("div");
   wrap.style.position = "absolute";
   wrap.style.zIndex = "2147483647";
-  wrap.style.minWidth = "280px";
-  wrap.style.maxWidth = "420px";
+  wrap.style.minWidth = "320px";
+  wrap.style.maxWidth = "480px";
   wrap.style.background = "#fff";
   wrap.style.border = "1px solid #e5e7eb";
   wrap.style.borderRadius = "8px";
@@ -60,6 +59,23 @@ function createPopover() {
   title.style.color = "#111";
   title.style.marginBottom = "6px";
 
+  const controls = document.createElement("div");
+  controls.style.display = "flex";
+  controls.style.gap = "6px";
+  controls.style.marginBottom = "6px";
+  controls.style.flexWrap = "wrap";
+
+  const providerSel = document.createElement("select");
+  ["openai", "anthropic", "gemini"].forEach((p) => {
+    const o = document.createElement("option");
+    o.value = p;
+    o.textContent = p;
+    providerSel.appendChild(o);
+  });
+  const modelInp = document.createElement("input");
+  modelInp.placeholder = "model";
+  modelInp.style.minWidth = "160px";
+
   const actions = document.createElement("div");
   actions.style.display = "flex";
   actions.style.gap = "6px";
@@ -71,8 +87,14 @@ function createPopover() {
   btnCancel.textContent = "Cancel";
   const btnInsert = document.createElement("button");
   btnInsert.textContent = "Insert";
+  const btnCopy = document.createElement("button");
+  btnCopy.textContent = "Copy";
+  const btnRetry = document.createElement("button");
+  btnRetry.textContent = "Retry";
+  const btnRegen = document.createElement("button");
+  btnRegen.textContent = "Regenerate";
 
-  [btnStart, btnCancel, btnInsert].forEach((b) => {
+  [btnStart, btnCancel, btnInsert, btnCopy, btnRetry, btnRegen].forEach((b) => {
     b.style.fontSize = "12px";
     b.style.padding = "4px 8px";
     b.style.border = "1px solid #d1d5db";
@@ -100,10 +122,23 @@ function createPopover() {
   includeTxt.textContent = "Include selection";
   includeWrap.append(includeCb, includeTxt);
 
-  actions.append(btnStart, btnCancel, btnInsert);
-  wrap.append(title, actions, includeWrap, output);
+  controls.append(providerSel, modelInp);
+  actions.append(btnStart, btnCancel, btnInsert, btnCopy, btnRetry, btnRegen);
+  wrap.append(title, controls, actions, includeWrap, output);
 
-  return { wrap, btnStart, btnCancel, btnInsert, output, includeCb };
+  return {
+    wrap,
+    providerSel,
+    modelInp,
+    btnStart,
+    btnCancel,
+    btnInsert,
+    btnCopy,
+    btnRetry,
+    btnRegen,
+    output,
+    includeCb,
+  };
 }
 
 let currentPopover: ReturnType<typeof createPopover> | null = null;
@@ -129,6 +164,14 @@ function openPopover(target: HTMLElement) {
       if (typeof cfg.includeSelectionDefault === "boolean") {
         (pop as any).includeCb.checked = cfg.includeSelectionDefault;
       }
+      const defProv = cfg.defaultProvider || "openai";
+      pop.providerSel.value = defProv;
+      const dms = (cfg.defaultModels || {}) as Record<string, string>;
+      pop.modelInp.value = dms[defProv] || cfg.defaultModel || "gpt-4o-mini";
+      pop.providerSel.addEventListener("change", () => {
+        const p = pop.providerSel.value;
+        pop.modelInp.value = dms[p] || pop.modelInp.value;
+      });
     });
   } catch {}
 
@@ -136,8 +179,7 @@ function openPopover(target: HTMLElement) {
   let buffer = "";
   let insertCommitted = false;
 
-  const start = async () => {
-    if (streaming) return;
+  const startStream = () => {
     streaming = true;
     buffer = "";
     pop.output.textContent = "";
@@ -149,7 +191,14 @@ function openPopover(target: HTMLElement) {
       type: "GENZ_STREAM_START",
       selectedText: selection,
       includeSelection: !!(pop as any).includeCb.checked,
+      provider: pop.providerSel.value,
+      model: pop.modelInp.value,
     });
+  };
+
+  const start = async () => {
+    if (streaming) return;
+    startStream();
   };
   const cancel = async () => {
     if (!streaming) return;
@@ -161,12 +210,37 @@ function openPopover(target: HTMLElement) {
     insertCommitted = true;
     closePopover();
   };
+  const copyOut = async () => {
+    try {
+      await navigator.clipboard.writeText(buffer || "");
+    } catch {}
+  };
+  const retry = async () => {
+    if (streaming) return;
+    startStream();
+  };
+  const regen = async () => {
+    if (streaming) return;
+    startStream();
+  };
 
   pop.btnStart.addEventListener("click", start);
   pop.btnCancel.addEventListener("click", cancel);
   pop.btnInsert.addEventListener("click", (e) => {
     e.preventDefault();
     insert();
+  });
+  pop.btnCopy.addEventListener("click", (e) => {
+    e.preventDefault();
+    copyOut();
+  });
+  pop.btnRetry.addEventListener("click", (e) => {
+    e.preventDefault();
+    retry();
+  });
+  pop.btnRegen.addEventListener("click", (e) => {
+    e.preventDefault();
+    regen();
   });
 
   const onMsg = (msg: any) => {
@@ -187,7 +261,6 @@ function openPopover(target: HTMLElement) {
       pop.output.textContent = `Error: ${msg.error}`;
     } else if (msg?.type === "GENZ_STREAM_FINISH") {
       streaming = false;
-      // nothing else here; backend logs success already at end
     }
   };
 
@@ -357,13 +430,6 @@ function insertTextAtTarget(target: HTMLElement, text: string) {
     target.dispatchEvent(new Event("input", { bubbles: true }));
   }
 }
-
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg?.type === "GENZ_INSERT_TEXT" && typeof msg.text === "string") {
-    const target = (document.activeElement as HTMLElement) || lastFocused;
-    if (target) insertTextAtTarget(target, msg.text);
-  }
-});
 
 function init() {
   try {
