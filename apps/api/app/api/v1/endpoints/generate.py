@@ -6,6 +6,7 @@ from app.api.deps import get_current_user, get_db
 from app.core.crypto import decrypt_value
 from app.core.rate_limit import check_rate_limit
 from app.core.billing import estimate_tokens, compute_cost_usd
+from app.core.quota import quota_remaining
 from app.models.key import ApiKey
 from app.models.user import User
 from app.models.request import RequestRecord
@@ -33,6 +34,13 @@ async def generate(req: GenerationRequest, db: Session = Depends(get_db), curren
     if not allowed:
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Rate limit exceeded")
 
+    prompt_text = (req.prompt or "")
+    if req.context and req.context.selected_text:
+        prompt_text += "\n\nSelected:\n" + req.context.selected_text
+    needed_in = estimate_tokens(req.model_provider, prompt_text, req.model)
+    if quota_remaining(db, current_user) <= needed_in:
+        raise HTTPException(status_code=402, detail="Monthly quota exceeded")
+
     if not req.use_user_key:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Server key flow not configured")
 
@@ -48,11 +56,7 @@ async def generate(req: GenerationRequest, db: Session = Depends(get_db), curren
 
     try:
         result = adapter.generate(current_user, req, api_key)
-        # token and cost estimation
-        prompt_text = (req.prompt or "")
-        if req.context and req.context.selected_text:
-            prompt_text += "\n\nSelected:\n" + req.context.selected_text
-        tin = estimate_tokens(req.model_provider, prompt_text, req.model)
+        tin = needed_in
         tout = estimate_tokens(req.model_provider, result.output_text, req.model)
         rec.tokens_in = tin
         rec.tokens_out = tout
@@ -74,6 +78,13 @@ async def generate_stream(req: GenerationRequest, db: Session = Depends(get_db),
     if not allowed:
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Rate limit exceeded")
 
+    prompt_text = (req.prompt or "")
+    if req.context and req.context.selected_text:
+        prompt_text += "\n\nSelected:\n" + req.context.selected_text
+    needed_in = estimate_tokens(req.model_provider, prompt_text, req.model)
+    if quota_remaining(db, current_user) <= needed_in:
+        raise HTTPException(status_code=402, detail="Monthly quota exceeded")
+
     if not req.use_user_key:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Server key flow not configured")
 
@@ -83,14 +94,7 @@ async def generate_stream(req: GenerationRequest, db: Session = Depends(get_db),
     url_str = str(req.context.url) if (req.context and req.context.url) else None
     domain, path = RequestRecord.parse_domain_path(url_str)
     rec = RequestRecord(user_id=current_user.id, domain=domain, path=path, model=req.model, model_provider=req.model_provider, status="streaming")
-    db.add(rec)
-    db.commit()
-
-    # pre-estimate prompt tokens as above
-    prompt_text = (req.prompt or "")
-    if req.context and req.context.selected_text:
-        prompt_text += "\n\nSelected:\n" + req.context.selected_text
-    rec.tokens_in = estimate_tokens(req.model_provider, prompt_text, req.model)
+    rec.tokens_in = needed_in
     db.add(rec)
     db.commit()
 
