@@ -18,7 +18,6 @@ function getRefreshToken(): string | null {
 }
 
 function setRefreshToken(token: string | null) {
-  if (typeof window === "undefined") return;
   if (token) localStorage.setItem("genz_refresh_token", token);
   else localStorage.removeItem("genz_refresh_token");
 }
@@ -95,4 +94,7 @@ export const api = {
   deleteKey: (id: string) =>
     request(`/api/v1/keys/${id}`, { method: "DELETE" }),
   listRequests: (limit = 50) => request(`/api/v1/requests?limit=${limit}`),
+  billingSubscribe: (plan: 'Basic' | 'Pro' | 'Premium') =>
+    request(`/api/v1/billing/subscribe?plan=${encodeURIComponent(plan)}`, { method: 'POST' }),
+  billingPortal: () => request('/api/v1/billing/portal', { method: 'POST' }),
 };

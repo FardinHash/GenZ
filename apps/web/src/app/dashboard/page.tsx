@@ -68,6 +68,26 @@ export default function DashboardPage() {
     router.push("/login");
   }
 
+  async function onSubscribe(plan: "Basic" | "Pro" | "Premium") {
+    setError(null);
+    try {
+      const res = await api.billingSubscribe(plan);
+      if (res.checkout_url) window.location.href = res.checkout_url as string;
+    } catch (e: any) {
+      setError(e?.message ?? "Checkout failed");
+    }
+  }
+
+  async function onPortal() {
+    setError(null);
+    try {
+      const res = await api.billingPortal();
+      if (res.portal_url) window.location.href = res.portal_url as string;
+    } catch (e: any) {
+      setError(e?.message ?? "Portal failed");
+    }
+  }
+
   if (loading) return <main style={{ padding: 24 }}>Loading...</main>;
 
   return (
@@ -107,6 +127,25 @@ export default function DashboardPage() {
           </div>
         </section>
       )}
+
+      <section
+        style={{
+          border: "1px solid #eee",
+          padding: 12,
+          borderRadius: 8,
+          marginBottom: 16,
+        }}
+      >
+        <h2>Plan</h2>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={() => onSubscribe("Basic")}>Switch to Basic</button>
+          <button onClick={() => onSubscribe("Pro")}>Upgrade to Pro</button>
+          <button onClick={() => onSubscribe("Premium")}>
+            Upgrade to Premium
+          </button>
+          <button onClick={onPortal}>Manage Billing</button>
+        </div>
+      </section>
 
       <section
         style={{
