@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     # Admin
     admin_api_secret: str = "change-admin-secret"
 
+    # Stripe
+    stripe_secret_key: str | None = None
+    stripe_webhook_secret: str | None = None
+    stripe_price_basic: str | None = None
+    stripe_price_pro: str | None = None
+    stripe_price_premium: str | None = None
+
     def get_cors_origins(self) -> List[str]:
         raw = (self.cors_origins or "").strip()
         if raw == "*" or raw == "":
