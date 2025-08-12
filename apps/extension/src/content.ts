@@ -373,12 +373,17 @@ function init() {
         const disabled: string[] = cfg.disabledDomains || [];
         const host = window.location.hostname;
         isDisabledSite = disabled.includes(host);
-        if (isDisabledSite) return;
+        if (isDisabledSite) return; // early exit, no observers attached
         scanRoot(document);
         observer.observe(document.documentElement, {
           childList: true,
           subtree: true,
         });
+        document.addEventListener("readystatechange", () => {
+          if (document.readyState === "complete" && !isDisabledSite)
+            scanRoot(document);
+        });
+        trackSelection();
       });
     } catch {
       scanRoot(document);
@@ -386,12 +391,11 @@ function init() {
         childList: true,
         subtree: true,
       });
+      document.addEventListener("readystatechange", () => {
+        if (document.readyState === "complete") scanRoot(document);
+      });
+      trackSelection();
     }
-    document.addEventListener("readystatechange", () => {
-      if (document.readyState === "complete" && !isDisabledSite)
-        scanRoot(document);
-    });
-    trackSelection();
   } catch (e) {
     console.error("[genz] content init error", e);
   }

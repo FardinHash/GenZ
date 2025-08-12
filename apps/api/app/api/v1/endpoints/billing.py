@@ -14,6 +14,7 @@ def _get_billing_settings(user: User) -> dict:
     current = user.settings or {}
     billing = current.get("billing") or {}
     current["billing"] = billing
+    user.settings = current
     return billing
 
 
@@ -44,9 +45,7 @@ async def subscribe(plan: str, db: Session = Depends(get_db), current_user: User
             client_reference_id=str(current_user.id),
             customer_email=current_user.email,
             customer=customer_id if customer_id else None,
-            subscription_data={
-                "metadata": {"user_id": str(current_user.id)}
-            },
+            subscription_data={"metadata": {"user_id": str(current_user.id)}},
             allow_promotion_codes=True,
         )
         return {"checkout_url": session.url}
@@ -157,4 +156,4 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             db.add(user)
             db.commit()
 
-        return JSONResponse(status_code=200, content={"received": True}) 
+    return JSONResponse(status_code=200, content={"received": True}) 
