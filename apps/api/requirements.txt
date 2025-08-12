@@ -2,6 +2,7 @@ fastapi
 uvicorn[standard]
 pydantic-settings
 python-multipart
+email-validator
 openai
 anthropic
 google-generativeai

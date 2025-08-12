@@ -18,6 +18,11 @@ env:
   JWT_SECRET_KEY: "change-me"
   ACCESS_TOKEN_EXPIRE_MINUTES: "60"
 
+waitForDatabase:
+  enabled: true
+  host: postgres-postgresql
+  port: 5432
+
 secret:
   create: false
   name: genz-api-env
