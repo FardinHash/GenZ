@@ -14,6 +14,7 @@ def _get_billing_settings(user: User) -> dict:
     current = user.settings or {}
     billing = current.get("billing") or {}
     current["billing"] = billing
+    user.settings = current
     return billing
 
 
@@ -33,22 +34,34 @@ async def subscribe(plan: str, db: Session = Depends(get_db), current_user: User
     if not price_id:
         raise HTTPException(status_code=400, detail="Invalid plan")
 
-    customer_id = (current_user.settings or {}).get("billing", {}).get("stripe_customer_id")
+    billing = _get_billing_settings(current_user)
+    customer_id = billing.get("stripe_customer_id")
+    if not customer_id:
+        try:
+            customer = stripe.Customer.create(email=current_user.email, metadata={"user_id": str(current_user.id)})
+            billing["stripe_customer_id"] = customer.id
+            db.add(current_user)
+            db.commit()
+            customer_id = customer.id
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to create customer: {e}")
 
     try:
-        session = stripe.checkout.Session.create(
+        params = dict(
             mode="subscription",
             line_items=[{"price": price_id, "quantity": 1}],
             success_url="http://localhost:3000/dashboard?checkout=success",
             cancel_url="http://localhost:3000/dashboard?checkout=cancel",
             client_reference_id=str(current_user.id),
-            customer_email=current_user.email,
-            customer=customer_id if customer_id else None,
-            subscription_data={
-                "metadata": {"user_id": str(current_user.id)}
-            },
             allow_promotion_codes=True,
+            subscription_data={"metadata": {"user_id": str(current_user.id)}},
+            customer=customer_id,
         )
+        if not customer_id:
+            params.pop("customer")
+            params["customer_email"] = current_user.email
+
+        session = stripe.checkout.Session.create(**params)
         return {"checkout_url": session.url}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -60,9 +73,20 @@ async def create_billing_portal(db: Session = Depends(get_db), current_user: Use
     if not settings.stripe_secret_key:
         raise HTTPException(status_code=500, detail="Stripe not configured")
     stripe.api_key = settings.stripe_secret_key
-    customer_id = (current_user.settings or {}).get("billing", {}).get("stripe_customer_id")
+
+    billing = _get_billing_settings(current_user)
+    customer_id = billing.get("stripe_customer_id")
     if not customer_id:
-        raise HTTPException(status_code=400, detail="No Stripe customer on file")
+        try:
+            candidates = stripe.Customer.search(query=f"email:'{current_user.email}'")
+            cust = candidates.data[0] if candidates.data else stripe.Customer.create(email=current_user.email, metadata={"user_id": str(current_user.id)})
+            billing["stripe_customer_id"] = cust.id
+            db.add(current_user)
+            db.commit()
+            customer_id = cust.id
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"No Stripe customer on file and lookup failed: {e}")
+
     try:
         sess = stripe.billing_portal.Session.create(
             customer=customer_id,
@@ -109,8 +133,10 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             user = db.query(User).filter(User.id == uid).first()
         if user:
             billing = _get_billing_settings(user)
-            billing["stripe_customer_id"] = data.get("customer")
-            billing["stripe_subscription_id"] = data.get("subscription")
+            if data.get("customer"):
+                billing["stripe_customer_id"] = data.get("customer")
+            if data.get("subscription"):
+                billing["stripe_subscription_id"] = data.get("subscription")
             price_id = None
             if data.get("line_items") and data["line_items"]["data"]:
                 price_id = data["line_items"]["data"][0]["price"]["id"]
@@ -130,7 +156,8 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
                 user = db.query(User).filter(User.settings["billing"]["stripe_customer_id"].astext == cust_id).first()  # type: ignore
         if user:
             billing = _get_billing_settings(user)
-            billing["stripe_customer_id"] = sub.get("customer")
+            if sub.get("customer"):
+                billing["stripe_customer_id"] = sub.get("customer")
             billing["stripe_subscription_id"] = sub.get("id")
             price_id = None
             items = (sub.get("items") or {}).get("data") or []
@@ -157,4 +184,4 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             db.add(user)
             db.commit()
 
-        return JSONResponse(status_code=200, content={"received": True}) 
+    return JSONResponse(status_code=200, content={"received": True}) 
