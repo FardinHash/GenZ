@@ -159,11 +159,16 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             if sub.get("customer"):
                 billing["stripe_customer_id"] = sub.get("customer")
             billing["stripe_subscription_id"] = sub.get("id")
-            price_id = None
-            items = (sub.get("items") or {}).get("data") or []
-            if items:
-                price_id = items[0]["price"]["id"]
-            set_plan_from_price(user, price_id)
+            status_val = sub.get("status")
+            cancel_at_period_end = bool(sub.get("cancel_at_period_end"))
+            if status_val == "canceled" or cancel_at_period_end:
+                user.plan_id = "Basic"
+            else:
+                price_id = None
+                items = (sub.get("items") or {}).get("data") or []
+                if items:
+                    price_id = items[0]["price"]["id"]
+                set_plan_from_price(user, price_id)
             db.add(user)
             db.commit()
 
@@ -184,4 +189,4 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             db.add(user)
             db.commit()
 
-    return JSONResponse(status_code=200, content={"received": True}) 
+    return JSONResponse(status_code=200, content={"received": True})
