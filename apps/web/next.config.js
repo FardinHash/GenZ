@@ -6,4 +6,6 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig; 
+const { withSentryConfig } = require('@sentry/nextjs');
+
+module.exports = withSentryConfig(nextConfig, { silent: true }); 
