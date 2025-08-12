@@ -1,5 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 
 from app.core.config import get_settings
 from app.api.v1.router import api_router
@@ -7,8 +8,21 @@ from app.db.base import Base
 from app.db.session import engine
 from app.models.plan import Plan
 
+# Sentry
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+
+# Prometheus
+from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+import time
+
+REQUEST_COUNT = Counter("api_requests_total", "Total API requests", ["method", "path", "status"])
+REQUEST_LATENCY = Histogram("api_request_latency_seconds", "API request latency", ["method", "path"])
 
 settings = get_settings()
+
+if settings.sentry_dsn:
+    sentry_sdk.init(dsn=settings.sentry_dsn, integrations=[FastApiIntegration()], environment=settings.environment, release=settings.version)
 
 app = FastAPI(
     title=settings.app_name,
@@ -25,6 +39,26 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def metrics_middleware(request: Request, call_next):
+    path = request.url.path
+    method = request.method
+    start = time.time()
+    try:
+        response = await call_next(request)
+        status_code = getattr(response, "status_code", 500)
+        REQUEST_COUNT.labels(method=method, path=path, status=str(status_code)).inc()
+        return response
+    finally:
+        duration = time.time() - start
+        REQUEST_LATENCY.labels(method=method, path=path).observe(duration)
+
+
+@app.get("/metrics")
+async def metrics():
+    return PlainTextResponse(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.on_event("startup")

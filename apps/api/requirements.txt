@@ -16,3 +16,5 @@ cryptography
 redis
 tiktoken
 stripe
+sentry-sdk[fastapi]
+prometheus-client
