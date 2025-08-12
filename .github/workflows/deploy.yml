@@ -1,6 +1,11 @@
 name: Deploy
 
 on:
+  push:
+    branches: [master]
+    paths:
+      - "helm/**"
+      - ".github/workflows/deploy.yml"
   workflow_dispatch:
     inputs:
       namespace:
@@ -17,6 +22,12 @@ jobs:
     runs-on: ubuntu-latest
     env:
       KUBE_CONFIG_BASE64: ${{ secrets.KUBE_CONFIG_BASE64 }}
+      API_IMAGE_REPO: ghcr.io/${{ github.repository_owner }}/genz-api
+      WEB_IMAGE_REPO: ghcr.io/${{ github.repository_owner }}/genz-web
+      IMAGE_PULL_SECRET_NAME: regcred
+      SECRET_REF: genz-api-env
+      DB_HOST: postgres-postgresql
+      REDIS_HOST: redis-master
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,23 +46,36 @@ jobs:
       - name: Create namespace
         if: env.KUBE_CONFIG_BASE64 != ''
         run: |
-          kubectl create namespace "${{ github.event.inputs.namespace }}" || true
+          kubectl create namespace "${{ github.event.inputs.namespace || 'genz' }}" || true
 
       - name: Deploy genz-api
         if: env.KUBE_CONFIG_BASE64 != ''
         run: |
+          NS=${{ github.event.inputs.namespace || 'genz' }}
           SUFFIX=${{ github.event.inputs.environment }}
           EXTRA=""
           if [ -n "$SUFFIX" ] && [ -f helm/genz-api/values-$SUFFIX.yaml ]; then EXTRA="-f helm/genz-api/values-$SUFFIX.yaml"; fi
-          helm upgrade --install genz-api helm/genz-api -n "${{ github.event.inputs.namespace }}" $EXTRA
+          DB_URL="postgresql+psycopg://postgres:postgres@${DB_HOST}:5432/genz"
+          REDIS_URL="redis://${REDIS_HOST}:6379/0"
+          helm upgrade --install genz-api helm/genz-api -n "$NS" $EXTRA \
+            --set image.repository="${API_IMAGE_REPO}" \
+            --set env.DATABASE_URL="${DB_URL}" \
+            --set env.REDIS_URL="${REDIS_URL}" \
+            --set secretRef="${SECRET_REF}" \
+            --set imagePullSecrets[0].name="${IMAGE_PULL_SECRET_NAME}"
 
       - name: Deploy genz-web
         if: env.KUBE_CONFIG_BASE64 != ''
         run: |
+          NS=${{ github.event.inputs.namespace || 'genz' }}
           SUFFIX=${{ github.event.inputs.environment }}
           EXTRA=""
           if [ -n "$SUFFIX" ] && [ -f helm/genz-web/values-$SUFFIX.yaml ]; then EXTRA="-f helm/genz-web/values-$SUFFIX.yaml"; fi
-          helm upgrade --install genz-web helm/genz-web -n "${{ github.event.inputs.namespace }}" $EXTRA
+          API_BASE="http://genz-api:8000"
+          helm upgrade --install genz-web helm/genz-web -n "$NS" $EXTRA \
+            --set image.repository="${WEB_IMAGE_REPO}" \
+            --set env.NEXT_PUBLIC_API_BASE_URL="${API_BASE}" \
+            --set imagePullSecrets[0].name="${IMAGE_PULL_SECRET_NAME}"
 
       - name: Skip (no kubeconfig provided)
         if: env.KUBE_CONFIG_BASE64 == ''
