@@ -1,0 +1,5 @@
+apiVersion: v2
+name: genz-api
+version: 0.1.0
+appVersion: "0.1.0"
+description: Genz FastAPI service

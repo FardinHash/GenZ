@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: { { include "genz-api.fullname" . } }
+spec:
+  selector:
+    app: { { include "genz-api.fullname" . } }
+  ports:
+    - name: http
+      port: { { .Values.service.port } }
+      targetPort: 8000

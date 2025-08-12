@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     stripe_price_pro: str | None = None
     stripe_price_premium: str | None = None
 
+    # Observability
+    sentry_dsn: str | None = None
+
     def get_cors_origins(self) -> List[str]:
         raw = (self.cors_origins or "").strip()
         if raw == "*" or raw == "":
