@@ -33,4 +33,4 @@ Setup instructions will be added in subsequent steps as we scaffold each app.
 
 ### License
 
-IntellWe. All rights reserved.
+IntellWe - FardinHash, RianaAzad. All rights reserved.
